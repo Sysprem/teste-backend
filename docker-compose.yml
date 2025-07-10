@@ -1,0 +1,82 @@
+services:
+  postgres-keycloak:
+    image: postgres:17.5-alpine
+    container_name: postgres-keycloak
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    volumes:
+      - keycloak:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: keycloak
+
+  postgres-sysprem:
+    image: postgres:17.5-alpine
+    container_name: postgres-sysprem
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    volumes:
+      - sysprem:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: sysprem
+      POSTGRES_USER: sysprem
+      POSTGRES_PASSWORD: sysprem
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.2.5
+    container_name: keycloak
+    restart: unless-stopped
+    depends_on:
+      - postgres-keycloak
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres-keycloak:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: keycloak
+      KC_HOSTNAME_STRICT: "false"
+      KC_HTTP_ENABLED: "true"
+      KC_PROXY_HEADERS: xforwarded
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    command:
+      - start
+      - --import-realm  # Descomente para importar o realm inicial
+    volumes:
+      - ./keycloak-init:/opt/keycloak/data/import # Descomente para importar o realm inicial
+    ports:
+      - "8080:8080"
+    networks:
+      - default
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+          cpus: '1'
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nestjs
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 5s
+      retries: 5
+    depends_on:
+      - postgres-sysprem
+
+volumes:
+  keycloak:
+    name: keycloak
+  sysprem:
+    name: sysprem
